@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cloudvault
+      POSTGRES_PASSWORD: cloudvault_pass
+      POSTGRES_DB: cloudvault
+    volumes:
+      - cloudvault_db:/var/lib/postgresql/data
+    networks:
+      - cloudvault_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudvault"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "5055:5000"
+    environment:
+      DATABASE_URL: postgresql://cloudvault:cloudvault_pass@db:5432/cloudvault
+      SESSION_SECRET: SHUBU_YERGA_OZ_PAROLINGIZNI_YOZING_KAMIDA_32_BELGI
+      NODE_ENV: production
+    volumes:
+      - cloudvault_uploads:/app/uploads
+    networks:
+      - cloudvault_net
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  cloudvault_db:
+  cloudvault_uploads:
+
+networks:
+  cloudvault_net:
+    driver: bridge
