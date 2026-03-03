@@ -38,10 +38,5 @@ export function getFileIconType(mimeType: string): string {
 }
 
 export function isPreviewable(mimeType: string): boolean {
-  return (
-    mimeType.startsWith("image/") ||
-    mimeType.startsWith("video/") ||
-    mimeType.startsWith("audio/") ||
-    mimeType === "application/pdf"
-  );
+  return mimeType.startsWith("image/") || mimeType.startsWith("video/") || mimeType.startsWith("audio/") || mimeType === "application/pdf";
 }
