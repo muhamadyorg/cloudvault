@@ -33,6 +33,11 @@ export const folders = pgTable("folders", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
 export const uploadRequests = pgTable("upload_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   fileName: text("file_name").notNull(),
@@ -70,3 +75,4 @@ export type CloudFile = typeof files.$inferSelect;
 export type Folder = typeof folders.$inferSelect;
 export type UploadRequest = typeof uploadRequests.$inferSelect;
 export type InsertFolder = z.infer<typeof insertFolderSchema>;
+export type AppSetting = typeof appSettings.$inferSelect;

@@ -1,19 +1,65 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatFileSize } from "@/lib/utils";
-import { HardDrive, Shield, Cloud } from "lucide-react";
+import { HardDrive, Shield, Cloud, Pencil, Check, X } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function SettingsPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [editingLimit, setEditingLimit] = useState(false);
+  const [limitInput, setLimitInput] = useState("");
+
   const usageQuery = useQuery<{ used: number }>({
     queryKey: ["/api/storage/usage"],
   });
 
-  const totalSpace = 50 * 1024 * 1024 * 1024;
+  const limitQuery = useQuery<{ limitGb: number }>({
+    queryKey: ["/api/settings/storage-limit"],
+  });
+
+  useEffect(() => {
+    if (limitQuery.data) {
+      setLimitInput(String(limitQuery.data.limitGb));
+    }
+  }, [limitQuery.data]);
+
+  const limitMutation = useMutation({
+    mutationFn: (limitGb: number) =>
+      apiRequest("PUT", "/api/settings/storage-limit", { limitGb }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/storage-limit"] });
+      setEditingLimit(false);
+      toast({ title: "Storage limit updated" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const limitGb = limitQuery.data?.limitGb ?? 50;
+  const totalSpace = limitGb * 1024 * 1024 * 1024;
   const used = usageQuery.data?.used || 0;
   const usedPercentage = Math.min((used / totalSpace) * 100, 100);
+  const isAdmin = user?.role === "admin";
+
+  function handleSaveLimit() {
+    const val = parseFloat(limitInput);
+    if (isNaN(val) || val <= 0) {
+      toast({ title: "Invalid value", description: "Please enter a positive number", variant: "destructive" });
+      return;
+    }
+    limitMutation.mutate(val);
+  }
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-6">
@@ -30,7 +76,7 @@ export default function SettingsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {usageQuery.isLoading ? (
+          {usageQuery.isLoading || limitQuery.isLoading ? (
             <Skeleton className="h-20 w-full" />
           ) : (
             <>
@@ -51,6 +97,60 @@ export default function SettingsPage() {
                   {formatFileSize(totalSpace - used)} free
                 </span>
               </div>
+
+              {isAdmin && (
+                <div className="pt-2 border-t">
+                  <Label className="text-sm font-medium">Total Storage Limit (GB)</Label>
+                  {editingLimit ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={limitInput}
+                        onChange={(e) => setLimitInput(e.target.value)}
+                        className="w-32"
+                        data-testid="input-storage-limit"
+                      />
+                      <span className="text-sm text-muted-foreground">GB</span>
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={handleSaveLimit}
+                        disabled={limitMutation.isPending}
+                        data-testid="button-save-limit"
+                      >
+                        <Check className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditingLimit(false);
+                          setLimitInput(String(limitGb));
+                        }}
+                        data-testid="button-cancel-limit"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-sm text-muted-foreground" data-testid="text-limit-value">
+                        {limitGb} GB
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditingLimit(true)}
+                        data-testid="button-edit-limit"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </CardContent>

@@ -418,10 +418,34 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/storage/usage", requireAdmin, async (req, res) => {
+  app.get("/api/storage/usage", requireAuth, async (req, res) => {
     try {
       const usage = await storage.getStorageUsage();
       res.json({ used: usage });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/settings/storage-limit", requireAuth, async (req, res) => {
+    try {
+      const val = await storage.getSetting("storage_limit_gb");
+      const gb = val ? parseFloat(val) : 50;
+      res.json({ limitGb: gb });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/settings/storage-limit", requireAdmin, async (req, res) => {
+    try {
+      const { limitGb } = req.body;
+      const parsed = parseFloat(limitGb);
+      if (isNaN(parsed) || parsed <= 0) {
+        return res.status(400).json({ message: "Invalid storage limit" });
+      }
+      await storage.setSetting("storage_limit_gb", String(parsed));
+      res.json({ limitGb: parsed });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

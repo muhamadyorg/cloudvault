@@ -1,6 +1,6 @@
 import { eq, and, isNull, asc } from "drizzle-orm";
 import { db } from "./db";
-import { users, files, folders, uploadRequests } from "@shared/schema";
+import { users, files, folders, uploadRequests, appSettings } from "@shared/schema";
 import type { User, InsertUser, CloudFile, Folder, InsertFolder, UploadRequest } from "@shared/schema";
 import bcrypt from "bcryptjs";
 
@@ -31,6 +31,8 @@ export interface IStorage {
   updateUploadRequestStatus(id: string, status: string): Promise<UploadRequest | undefined>;
 
   getStorageUsage(): Promise<number>;
+  getSetting(key: string): Promise<string | null>;
+  setSetting(key: string, value: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -192,6 +194,16 @@ export class DatabaseStorage implements IStorage {
   async getStorageUsage(): Promise<number> {
     const allFiles = await db.select().from(files);
     return allFiles.reduce((sum, f) => sum + f.size, 0);
+  }
+
+  async getSetting(key: string): Promise<string | null> {
+    const [row] = await db.select().from(appSettings).where(eq(appSettings.key, key));
+    return row?.value ?? null;
+  }
+
+  async setSetting(key: string, value: string): Promise<void> {
+    await db.insert(appSettings).values({ key, value })
+      .onConflictDoUpdate({ target: appSettings.key, set: { value } });
   }
 }
 
