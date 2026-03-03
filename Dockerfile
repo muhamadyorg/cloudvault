@@ -10,6 +10,8 @@ RUN npm install
 COPY . .
 RUN npm run build
 
+RUN cp node_modules/connect-pg-simple/table.sql dist/table.sql
+
 RUN mkdir -p uploads/temp
 
 COPY entrypoint.sh /entrypoint.sh
