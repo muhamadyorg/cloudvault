@@ -13,7 +13,7 @@ done
 echo "✅ Database tayyor!"
 
 echo "📦 Jadvallarni yaratish (db:push)..."
-npm run db:push
+npm run db:push -- --force
 
 echo "🌱 Admin va user akkauntlarini yaratish..."
 npx tsx server/seed.ts || true
