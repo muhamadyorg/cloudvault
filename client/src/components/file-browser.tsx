@@ -76,17 +76,30 @@ function HeicPreview({ url, name }: { url: string; name: string }) {
 }
 
 function VideoPreview({ url, name }: { url: string; name: string }) {
-  const [cannotPlay, setCannotPlay] = useState(false);
-  if (cannotPlay) {
+  const ext = name.split(".").pop()?.toLowerCase() || "";
+  const mimeMap: Record<string, string> = {
+    mp4: "video/mp4", webm: "video/webm", ogg: "video/ogg",
+    mov: "video/quicktime", mkv: "video/x-matroska",
+    avi: "video/x-msvideo", flv: "video/x-flv",
+    wmv: "video/x-ms-wmv", "3gp": "video/3gpp", m4v: "video/mp4",
+  };
+  const mimeType = mimeMap[ext] || "video/mp4";
+  const testEl = document.createElement("video");
+  const support = testEl.canPlayType(mimeType);
+  const browserCanPlay = support === "probably" || support === "maybe";
+
+  if (!browserCanPlay) {
     return (
       <div className="text-center text-white/80">
-        <p className="mb-3">Bu format brauzerda o'ynalmaydi</p>
+        <p className="mb-1 font-medium">Bu format brauzerda o'ynalmaydi</p>
+        <p className="text-xs text-white/50 mb-3">{name}</p>
         <a href={url} download className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded text-white text-sm transition-colors">
           Download to play
         </a>
       </div>
     );
   }
+
   return (
     <video
       src={url}
@@ -94,7 +107,6 @@ function VideoPreview({ url, name }: { url: string; name: string }) {
       autoPlay={false}
       className="max-w-full max-h-full object-contain"
       data-testid="preview-video"
-      onError={() => setCannotPlay(true)}
     />
   );
 }

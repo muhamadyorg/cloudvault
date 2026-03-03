@@ -43,7 +43,8 @@ const VIDEO_EXTS = new Set(["mp4","webm","mov","mkv","avi","flv","wmv","3gp","m4
 const AUDIO_EXTS = new Set(["mp3","wav","ogg","flac","aac","m4a","opus","wma"]);
 const NO_PREVIEW_EXTS = new Set(["raw","dng","cr2","cr3","arw","nef","orf","rw2","raf","eps","ai","psd"]);
 
-function getExt(name: string): string {
+function getExt(name: string | null | undefined): string {
+  if (!name) return "";
   return name.split(".").pop()?.toLowerCase() || "";
 }
 
