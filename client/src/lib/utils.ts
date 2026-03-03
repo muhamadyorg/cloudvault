@@ -37,38 +37,11 @@ export function getFileIconType(mimeType: string): string {
   return "file";
 }
 
-const IMAGE_EXTS = new Set(["png","jpg","jpeg","webp","gif","bmp","svg","avif","tiff","tif"]);
-const HEIC_EXTS = new Set(["heic","heif"]);
-const VIDEO_EXTS = new Set(["mp4","webm","mov","mkv","avi","flv","wmv","3gp","m4v","avchd","m2ts","ts"]);
-const AUDIO_EXTS = new Set(["mp3","wav","ogg","flac","aac","m4a","opus","wma"]);
-const NO_PREVIEW_EXTS = new Set(["raw","dng","cr2","cr3","arw","nef","orf","rw2","raf","eps","ai","psd"]);
-
-function getExt(name: string | null | undefined): string {
-  if (!name) return "";
-  return name.split(".").pop()?.toLowerCase() || "";
-}
-
-export type PreviewType = "image" | "heic" | "video" | "audio" | "pdf" | "none";
-
-export function getPreviewType(mimeType: string, name: string): PreviewType {
-  const ext = getExt(name);
-  const mime = mimeType.toLowerCase();
-
-  if (NO_PREVIEW_EXTS.has(ext)) return "none";
-
-  if (HEIC_EXTS.has(ext) || mime === "image/heic" || mime === "image/heif") return "heic";
-
-  if (IMAGE_EXTS.has(ext) || mime.startsWith("image/")) return "image";
-
-  if (VIDEO_EXTS.has(ext) || mime.startsWith("video/")) return "video";
-
-  if (AUDIO_EXTS.has(ext) || mime.startsWith("audio/")) return "audio";
-
-  if (ext === "pdf" || mime === "application/pdf") return "pdf";
-
-  return "none";
-}
-
-export function isPreviewable(mimeType: string, name = ""): boolean {
-  return getPreviewType(mimeType, name) !== "none";
+export function isPreviewable(mimeType: string): boolean {
+  return (
+    mimeType.startsWith("image/") ||
+    mimeType.startsWith("video/") ||
+    mimeType.startsWith("audio/") ||
+    mimeType === "application/pdf"
+  );
 }

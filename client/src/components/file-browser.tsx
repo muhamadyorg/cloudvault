@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useRealtimeUpdates } from "@/hooks/use-realtime";
-import { formatFileSize, formatDate, getPreviewType } from "@/lib/utils";
+import { formatFileSize, formatDate, isPreviewable } from "@/lib/utils";
 import { FileIcon } from "./file-icon";
 import { UploadZone } from "./upload-zone";
 import { useToast } from "@/hooks/use-toast";
@@ -42,73 +42,6 @@ interface ClipboardItem {
   id: string;
   name: string;
   action: "copy" | "cut";
-}
-
-function HeicPreview({ url, name }: { url: string; name: string }) {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    setLoading(true);
-    setError(false);
-    setBlobUrl(null);
-
-    import("heic2any").then(({ default: heic2any }) =>
-      fetch(url)
-        .then(r => r.blob())
-        .then(blob => heic2any({ blob, toType: "image/jpeg", quality: 0.9 }))
-        .then(converted => {
-          const result = Array.isArray(converted) ? converted[0] : converted;
-          objectUrl = URL.createObjectURL(result);
-          setBlobUrl(objectUrl);
-          setLoading(false);
-        })
-    ).catch(() => { setError(true); setLoading(false); });
-
-    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [url]);
-
-  if (loading) return <div className="text-white/60 text-sm">Converting HEIC...</div>;
-  if (error) return <div className="text-white/60 text-sm">Cannot preview this HEIC file</div>;
-  return <img src={blobUrl!} alt={name} className="max-w-full max-h-full object-contain" data-testid="preview-image" />;
-}
-
-function VideoPreview({ url, name }: { url: string; name: string }) {
-  const ext = name.split(".").pop()?.toLowerCase() || "";
-  const mimeMap: Record<string, string> = {
-    mp4: "video/mp4", webm: "video/webm", ogg: "video/ogg",
-    mov: "video/quicktime", mkv: "video/x-matroska",
-    avi: "video/x-msvideo", flv: "video/x-flv",
-    wmv: "video/x-ms-wmv", "3gp": "video/3gpp", m4v: "video/mp4",
-  };
-  const mimeType = mimeMap[ext] || "video/mp4";
-  const testEl = document.createElement("video");
-  const support = testEl.canPlayType(mimeType);
-  const browserCanPlay = support === "probably" || support === "maybe";
-
-  if (!browserCanPlay) {
-    return (
-      <div className="text-center text-white/80">
-        <p className="mb-1 font-medium">Bu format brauzerda o'ynalmaydi</p>
-        <p className="text-xs text-white/50 mb-3">{name}</p>
-        <a href={url} download className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded text-white text-sm transition-colors">
-          Download to play
-        </a>
-      </div>
-    );
-  }
-
-  return (
-    <video
-      src={url}
-      controls
-      autoPlay={false}
-      className="max-w-full max-h-full object-contain"
-      data-testid="preview-video"
-    />
-  );
 }
 
 export function FileBrowser() {
@@ -467,34 +400,29 @@ export function FileBrowser() {
             )}
 
             <div className="max-w-full max-h-full flex items-center justify-center overflow-hidden" style={{ width: "100%", height: "100%" }}>
-              {(() => {
-                const pt = getPreviewType(previewFile.mimeType, previewFile.name);
-                const url = `/api/files/${previewFile.id}/preview`;
-                if (pt === "image") return (
-                  <img src={url} alt={previewFile.name} className="max-w-full max-h-full object-contain" data-testid="preview-image"
-                    onClick={() => { setPreviewFileIndex(-1); setIsFullscreen(false); }} style={{ cursor: "pointer" }} />
-                );
-                if (pt === "heic") return <HeicPreview url={url} name={previewFile.name} />;
-                if (pt === "video") return <VideoPreview url={url} name={previewFile.name} />;
-                if (pt === "audio") return (
-                  <div className="w-full max-w-md p-6">
-                    <audio src={url} controls className="w-full" data-testid="preview-audio" />
-                  </div>
-                );
-                if (pt === "pdf") return (
-                  <iframe src={url} className="w-full h-full rounded-md bg-white" title={previewFile.name} data-testid="preview-pdf" />
-                );
-                return (
-                  <div className="text-center text-white/80" data-testid="preview-unavailable">
-                    <FileIcon mimeType={previewFile.mimeType} className="w-20 h-20 mx-auto mb-4" />
-                    <p className="text-lg mb-1">Preview not available</p>
-                    <p className="text-sm text-white/50 mb-4">This format cannot be previewed in browser</p>
-                    <Button className="mt-2" onClick={() => window.open(`/api/files/${previewFile.id}/download`, "_blank")} data-testid="button-download-from-preview">
-                      <Download className="w-4 h-4 mr-1" /> Download
-                    </Button>
-                  </div>
-                );
-              })()}
+              {previewFile.mimeType.startsWith("image/") && (
+                <img src={`/api/files/${previewFile.id}/preview`} alt={previewFile.name} className="max-w-full max-h-full object-contain" data-testid="preview-image" onClick={() => { setPreviewFileIndex(-1); setIsFullscreen(false); }} style={{ cursor: "pointer" }} />
+              )}
+              {previewFile.mimeType.startsWith("video/") && (
+                <video src={`/api/files/${previewFile.id}/preview`} controls className="max-w-full max-h-full object-contain" data-testid="preview-video" />
+              )}
+              {previewFile.mimeType.startsWith("audio/") && (
+                <div className="w-full max-w-md p-6">
+                  <audio src={`/api/files/${previewFile.id}/preview`} controls className="w-full" data-testid="preview-audio" />
+                </div>
+              )}
+              {previewFile.mimeType === "application/pdf" && (
+                <iframe src={`/api/files/${previewFile.id}/preview`} className="w-full h-full rounded-md bg-white" title={previewFile.name} data-testid="preview-pdf" />
+              )}
+              {!isPreviewable(previewFile.mimeType) && (
+                <div className="text-center text-white/80" data-testid="preview-unavailable">
+                  <FileIcon mimeType={previewFile.mimeType} className="w-20 h-20 mx-auto mb-4" />
+                  <p className="text-lg">Preview not available</p>
+                  <Button className="mt-4" onClick={() => window.open(`/api/files/${previewFile.id}/download`, "_blank")} data-testid="button-download-from-preview">
+                    <Download className="w-4 h-4 mr-1" /> Download
+                  </Button>
+                </div>
+              )}
             </div>
 
             {canGoNext && (
@@ -815,8 +743,7 @@ function FileGridItem({ file, isAdmin, isLarge, onClick, onRename, onMove, onDel
   onRename: () => void; onMove: () => void; onDelete: () => void;
   onPrivacy: (v: boolean) => void; onCopy: () => void; onCut: () => void;
 }) {
-  const pt = getPreviewType(file.mimeType, file.name);
-  const showThumb = pt === "image" || pt === "heic" || pt === "video";
+  const showThumb = file.mimeType.startsWith("image/") || file.mimeType.startsWith("video/");
   const [menuOpen, setMenuOpen] = useState(false);
   const longPress = useLongPress(() => setMenuOpen(true));
 
