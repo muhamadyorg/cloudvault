@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireAdmin } from "./auth";
@@ -7,6 +7,15 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import bcrypt from "bcryptjs";
+
+const sseClients = new Set<Response>();
+
+export function broadcastUpdate(type: "files" | "folders" | "requests") {
+  const data = JSON.stringify({ type, ts: Date.now() });
+  for (const client of sseClients) {
+    try { client.write(`data: ${data}\n\n`); } catch { sseClients.delete(client); }
+  }
+}
 
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 const TEMP_DIR = path.join(process.cwd(), "uploads", "temp");
@@ -38,6 +47,20 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+
+  app.get("/api/events", requireAuth, (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+    res.write(`data: ${JSON.stringify({ type: "connected", ts: Date.now() })}\n\n`);
+    sseClients.add(res);
+    const heartbeat = setInterval(() => {
+      try { res.write(": ping\n\n"); } catch { clearInterval(heartbeat); sseClients.delete(res); }
+    }, 25000);
+    req.on("close", () => { clearInterval(heartbeat); sseClients.delete(res); });
+  });
 
   app.post("/api/auth/login", (req, res, next) => {
     passport.authenticate("local", (err: any, user: any, info: any) => {
@@ -135,6 +158,7 @@ export async function registerRoutes(
         isPrivate: req.body.isPrivate || false,
         createdBy: req.user!.id,
       });
+      broadcastUpdate("folders");
       res.json(folder);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -145,6 +169,7 @@ export async function registerRoutes(
     try {
       const folder = await storage.renameFolder(req.params.id, req.body.name);
       if (!folder) return res.status(404).json({ message: "Folder not found" });
+      broadcastUpdate("folders");
       res.json(folder);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -155,6 +180,7 @@ export async function registerRoutes(
     try {
       const folder = await storage.moveFolder(req.params.id, req.body.parentId || null);
       if (!folder) return res.status(404).json({ message: "Folder not found" });
+      broadcastUpdate("folders");
       res.json(folder);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -169,6 +195,7 @@ export async function registerRoutes(
       const { folders: foldersTable } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
       const [updated] = await db.update(foldersTable).set({ isPrivate: req.body.isPrivate }).where(eq(foldersTable.id, req.params.id)).returning();
+      broadcastUpdate("folders");
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -178,6 +205,7 @@ export async function registerRoutes(
   app.delete("/api/folders/:id", requireAdmin, async (req, res) => {
     try {
       await storage.deleteFolder(req.params.id);
+      broadcastUpdate("folders");
       res.json({ message: "Deleted" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -217,6 +245,7 @@ export async function registerRoutes(
         });
         results.push(file);
       }
+      broadcastUpdate("files");
       res.json(results);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -283,6 +312,8 @@ export async function registerRoutes(
       });
       
       await storage.updateUploadRequestStatus(req.params.id, "approved");
+      broadcastUpdate("files");
+      broadcastUpdate("requests");
       res.json({ message: "Approved" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -299,6 +330,7 @@ export async function registerRoutes(
       }
       
       await storage.updateUploadRequestStatus(req.params.id, "rejected");
+      broadcastUpdate("requests");
       res.json({ message: "Rejected" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -347,6 +379,7 @@ export async function registerRoutes(
     try {
       const file = await storage.renameFile(req.params.id, req.body.name);
       if (!file) return res.status(404).json({ message: "File not found" });
+      broadcastUpdate("files");
       res.json(file);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -357,6 +390,7 @@ export async function registerRoutes(
     try {
       const file = await storage.moveFile(req.params.id, req.body.folderId || null);
       if (!file) return res.status(404).json({ message: "File not found" });
+      broadcastUpdate("files");
       res.json(file);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -371,6 +405,7 @@ export async function registerRoutes(
       const { files: filesTable } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
       const [updated] = await db.update(filesTable).set({ isPrivate: req.body.isPrivate }).where(eq(filesTable.id, req.params.id)).returning();
+      broadcastUpdate("files");
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -385,6 +420,7 @@ export async function registerRoutes(
         fs.unlinkSync(file.path);
       }
       await storage.deleteFile(req.params.id);
+      broadcastUpdate("files");
       res.json({ message: "Deleted" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -412,6 +448,7 @@ export async function registerRoutes(
         uploadedBy: req.user!.id,
         isPrivate: file.isPrivate,
       });
+      broadcastUpdate("files");
       res.json(copy);
     } catch (err: any) {
       res.status(500).json({ message: err.message });

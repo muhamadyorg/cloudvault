@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useRealtimeUpdates } from "@/hooks/use-realtime";
 import { formatFileSize, formatDate, isPreviewable } from "@/lib/utils";
 import { FileIcon } from "./file-icon";
 import { UploadZone } from "./upload-zone";
@@ -47,6 +48,7 @@ export function FileBrowser() {
   const { user } = useAuth();
   const { toast } = useToast();
   const isAdmin = user?.role === "admin";
+  useRealtimeUpdates();
 
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
