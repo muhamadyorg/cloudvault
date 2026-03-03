@@ -12,7 +12,7 @@ c.connect().then(() => { c.end(); process.exit(0); }).catch(() => process.exit(1
 done
 echo "✅ Database tayyor!"
 
-echo "📦 Jadvallarni yaratish..."
+echo "📦 Barcha jadvallarni yaratish..."
 node -e "
 const { Client } = require('pg');
 const c = new Client({ connectionString: process.env.DATABASE_URL });
@@ -69,6 +69,17 @@ c.connect().then(async () => {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )
+  \`);
+  await c.query(\`
+    CREATE TABLE IF NOT EXISTS session (
+      sid VARCHAR NOT NULL COLLATE "default",
+      sess JSON NOT NULL,
+      expire TIMESTAMP(6) NOT NULL,
+      CONSTRAINT session_pkey PRIMARY KEY (sid) NOT DEFERRABLE INITIALLY IMMEDIATE
+    )
+  \`);
+  await c.query(\`
+    CREATE INDEX IF NOT EXISTS IDX_session_expire ON session (expire)
   \`);
   await c.end();
   console.log('✅ Barcha jadvallar tayyor!');
