@@ -745,10 +745,12 @@ function FileGridItem({ file, isAdmin, isLarge, onClick, onRename, onMove, onDel
 }) {
   const isImage = file.mimeType.startsWith("image/");
   const isVideo = file.mimeType.startsWith("video/");
-  const showThumb = isImage || isVideo;
+  const canThumb = isImage || isVideo;
   const [menuOpen, setMenuOpen] = useState(false);
+  const [thumbFailed, setThumbFailed] = useState(false);
   const longPress = useLongPress(() => setMenuOpen(true));
   const thumbUrl = `/api/files/${file.id}/preview`;
+  const showThumb = canThumb && !thumbFailed;
 
   return (
     <ContextMenu open={menuOpen} onOpenChange={setMenuOpen}>
@@ -761,9 +763,9 @@ function FileGridItem({ file, isAdmin, isLarge, onClick, onRename, onMove, onDel
             {showThumb ? (
               <div className={`w-full flex-1 min-h-0 rounded overflow-hidden bg-muted/50 flex items-center justify-center ${isLarge ? "mb-1.5" : "mb-1"}`}>
                 {isVideo ? (
-                  <video src={thumbUrl} muted preload="metadata" className="max-w-full max-h-full object-contain" />
+                  <video src={`${thumbUrl}#t=0.1`} muted preload="metadata" className="max-w-full max-h-full object-contain" onError={() => setThumbFailed(true)} />
                 ) : (
-                  <img src={thumbUrl} alt={file.name} className="max-w-full max-h-full object-contain" loading="lazy" />
+                  <img src={thumbUrl} alt={file.name} className="max-w-full max-h-full object-contain" loading="lazy" onError={() => setThumbFailed(true)} />
                 )}
               </div>
             ) : (
