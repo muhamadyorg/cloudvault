@@ -11,7 +11,7 @@ import { formatFileSize } from "@/lib/utils";
 import { HardDrive, Shield, Cloud, Pencil, Check, X } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth } from "@/lib/auth";
 
 export default function SettingsPage() {
   const { user } = useAuth();
