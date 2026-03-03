@@ -743,9 +743,12 @@ function FileGridItem({ file, isAdmin, isLarge, onClick, onRename, onMove, onDel
   onRename: () => void; onMove: () => void; onDelete: () => void;
   onPrivacy: (v: boolean) => void; onCopy: () => void; onCut: () => void;
 }) {
-  const showThumb = file.mimeType.startsWith("image/") || file.mimeType.startsWith("video/");
+  const isImage = file.mimeType.startsWith("image/");
+  const isVideo = file.mimeType.startsWith("video/");
+  const showThumb = isImage || isVideo;
   const [menuOpen, setMenuOpen] = useState(false);
   const longPress = useLongPress(() => setMenuOpen(true));
+  const thumbUrl = `/api/files/${file.id}/preview`;
 
   return (
     <ContextMenu open={menuOpen} onOpenChange={setMenuOpen}>
@@ -755,13 +758,13 @@ function FileGridItem({ file, isAdmin, isLarge, onClick, onRename, onMove, onDel
             className={`flex flex-col items-center justify-center rounded-md hover-elevate cursor-pointer ${isLarge ? "aspect-square" : "aspect-square"} p-2`}
             onClick={onClick} data-testid={`file-grid-${file.id}`}
           >
-            {isLarge && showThumb ? (
-              <div className="w-full flex-1 min-h-0 rounded overflow-hidden bg-muted/50 flex items-center justify-center mb-1.5">
-                <img src={`/api/files/${file.id}/preview`} alt={file.name} className="max-w-full max-h-full object-contain" loading="lazy" />
-              </div>
-            ) : !isLarge && showThumb ? (
-              <div className="w-full flex-1 min-h-0 rounded overflow-hidden bg-muted/50 flex items-center justify-center mb-1">
-                <img src={`/api/files/${file.id}/preview`} alt={file.name} className="max-w-full max-h-full object-contain" loading="lazy" />
+            {showThumb ? (
+              <div className={`w-full flex-1 min-h-0 rounded overflow-hidden bg-muted/50 flex items-center justify-center ${isLarge ? "mb-1.5" : "mb-1"}`}>
+                {isVideo ? (
+                  <video src={thumbUrl} muted preload="metadata" className="max-w-full max-h-full object-contain" />
+                ) : (
+                  <img src={thumbUrl} alt={file.name} className="max-w-full max-h-full object-contain" loading="lazy" />
+                )}
               </div>
             ) : (
               <div className="flex-1 flex items-center justify-center">

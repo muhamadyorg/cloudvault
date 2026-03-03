@@ -7,6 +7,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import bcrypt from "bcryptjs";
+import sharp from "sharp";
 
 const sseClients = new Set<Response>();
 
@@ -366,7 +367,21 @@ export async function registerRoutes(
       if (!fs.existsSync(file.path)) {
         return res.status(404).json({ message: "File not found on disk" });
       }
-      res.setHeader("Content-Type", file.mimeType);
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      const isHeic = ext === "heic" || ext === "heif" || file.mimeType === "image/heic" || file.mimeType === "image/heif";
+      if (isHeic) {
+        try {
+          res.setHeader("Content-Type", "image/jpeg");
+          res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(file.name.replace(/\.(heic|heif)$/i, ".jpg"))}"`);
+          const converted = await sharp(file.path).jpeg({ quality: 85 }).toBuffer();
+          res.send(converted);
+          return;
+        } catch {
+          res.setHeader("Content-Type", file.mimeType);
+        }
+      } else {
+        res.setHeader("Content-Type", file.mimeType);
+      }
       res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(file.name)}"`);
       const stream = fs.createReadStream(file.path);
       stream.pipe(res);
