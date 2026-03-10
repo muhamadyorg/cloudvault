@@ -21,7 +21,6 @@ export default function SettingsPage() {
   const [limitInput, setLimitInput] = useState("");
   const [tgToken, setTgToken] = useState("");
   const [tgAdminId, setTgAdminId] = useState("");
-  const [tgGroupId, setTgGroupId] = useState("");
 
   const usageQuery = useQuery<{ used: number }>({
     queryKey: ["/api/storage/usage"],
@@ -50,7 +49,7 @@ export default function SettingsPage() {
     },
   });
 
-  const tgQuery = useQuery<{ token: string; adminUserId: string; groupId: string; isRunning: boolean }>({
+  const tgQuery = useQuery<{ token: string; adminUserId: string; isRunning: boolean }>({
     queryKey: ["/api/settings/telegram"],
     enabled: user?.role === "admin",
   });
@@ -59,12 +58,11 @@ export default function SettingsPage() {
     if (tgQuery.data) {
       setTgToken(tgQuery.data.token || "");
       setTgAdminId(tgQuery.data.adminUserId || "");
-      setTgGroupId(tgQuery.data.groupId || "");
     }
   }, [tgQuery.data]);
 
   const tgSaveMutation = useMutation({
-    mutationFn: () => apiRequest("PUT", "/api/settings/telegram", { token: tgToken, adminUserId: tgAdminId, groupId: tgGroupId }),
+    mutationFn: () => apiRequest("PUT", "/api/settings/telegram", { token: tgToken, adminUserId: tgAdminId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/settings/telegram"] });
       toast({ title: "Telegram sozlamalari saqlandi" });
@@ -78,7 +76,7 @@ export default function SettingsPage() {
     mutationFn: () => apiRequest("DELETE", "/api/settings/telegram"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/settings/telegram"] });
-      setTgToken(""); setTgAdminId(""); setTgGroupId("");
+      setTgToken(""); setTgAdminId("");
       toast({ title: "Telegram bot o'chirildi" });
     },
     onError: (err: any) => {
@@ -241,7 +239,7 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Bot orqali fayllarni qabul qiling. Har qanday user bot ga fayl yuborsa, upload request sifatida keladi. Tasdiqlansa Telegram guruhiga ham yuboriladi.
+              Bot orqali fayllarni qabul qiling. Siz (admin) yuborgan fayllar to'g'ridan-to'g'ri <strong>Telegram</strong> papkasiga saqlanadi. Boshqa userlar yuborgan fayllar upload request sifatida keladi.
             </p>
             <div className="space-y-3">
               <div className="space-y-1.5">
@@ -266,17 +264,6 @@ export default function SettingsPage() {
                   data-testid="input-tg-admin-id"
                 />
                 <p className="text-xs text-muted-foreground">@userinfobot dan bilib olishingiz mumkin</p>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="tg-group-id">Telegram Guruh ID (ixtiyoriy)</Label>
-                <Input
-                  id="tg-group-id"
-                  placeholder="-100123456789"
-                  value={tgGroupId}
-                  onChange={(e) => setTgGroupId(e.target.value)}
-                  data-testid="input-tg-group-id"
-                />
-                <p className="text-xs text-muted-foreground">Tasdiqlangan fayllar shu guruhga yuboriladi</p>
               </div>
             </div>
             <div className="flex items-center gap-2 pt-1">

@@ -4,7 +4,7 @@ import fs from "fs";
 import https from "https";
 
 let bot: TelegramBot | null = null;
-let botConfig: { token: string; adminUserId: string; groupId: string } | null = null;
+let botConfig: { token: string; adminUserId: string } | null = null;
 
 type OnFileReceived = (opts: {
   fileName: string;
@@ -56,6 +56,8 @@ async function handleFileMessage(msg: TelegramBot.Message) {
     ? `${msg.from.first_name}${msg.from.last_name ? " " + msg.from.last_name : ""}${msg.from.username ? " (@" + msg.from.username + ")" : ""}`
     : "Unknown";
 
+  const isAdmin = fromId === botConfig.adminUserId;
+
   let fileId: string | undefined;
   let originalName: string;
   let mimeType: string;
@@ -104,7 +106,7 @@ async function handleFileMessage(msg: TelegramBot.Message) {
 
     const actualSize = fileSize || fs.statSync(tempPath).size;
 
-    const request = await fileReceivedCallback({
+    const result = await fileReceivedCallback({
       fileName: uniqueName,
       originalName,
       mimeType,
@@ -114,17 +116,18 @@ async function handleFileMessage(msg: TelegramBot.Message) {
       fromName,
     });
 
-    const caption = msg.caption ? `\n📝 Izoh: ${msg.caption}` : "";
-    await bot.sendMessage(
-      botConfig.adminUserId,
-      `📥 *Yangi fayl so'rovi*\n\n👤 Kim: ${fromName}\n📄 Fayl: ${request.originalName}\n💾 Hajm: ${(actualSize / 1024 / 1024).toFixed(2)} MB${caption}\n\n✅ Tasdiqlash uchun CloudVault ga kiring`,
-      { parse_mode: "Markdown" }
-    );
-
-    await bot.sendMessage(
-      msg.chat.id,
-      `✅ Faylingiz qabul qilindi! Admin tasdiqlashini kuting.`
-    );
+    if (isAdmin) {
+      await bot.sendMessage(
+        msg.chat.id,
+        `✅ *${result.originalName}* CloudVault Telegram papkasiga saqlandi!`,
+        { parse_mode: "Markdown" }
+      );
+    } else {
+      await bot.sendMessage(
+        msg.chat.id,
+        `✅ Faylingiz qabul qilindi! Admin tasdiqlashini kuting.`
+      );
+    }
   } catch (err: any) {
     console.error("[Telegram] File handling error:", err.message);
     try {
@@ -133,7 +136,7 @@ async function handleFileMessage(msg: TelegramBot.Message) {
   }
 }
 
-export async function initBot(token: string, adminUserId: string, groupId: string) {
+export async function initBot(token: string, adminUserId: string) {
   if (bot) {
     try { bot.stopPolling(); } catch {}
     bot = null;
@@ -142,14 +145,14 @@ export async function initBot(token: string, adminUserId: string, groupId: strin
   if (!token || !adminUserId) return;
 
   try {
-    botConfig = { token, adminUserId, groupId };
+    botConfig = { token, adminUserId };
     bot = new TelegramBot(token, { polling: true });
 
     bot.on("message", async (msg) => {
       if (msg.document || msg.photo || msg.video || msg.audio || msg.voice) {
         await handleFileMessage(msg);
       } else if (msg.text === "/start") {
-        await bot?.sendMessage(msg.chat.id, "👋 Assalomu alaykum! Fayl yuborishingiz mumkin, admin ko'rib chiqadi.");
+        await bot?.sendMessage(msg.chat.id, "👋 Assalomu alaykum! Fayl yuborishingiz mumkin.");
       } else if (msg.text) {
         await bot?.sendMessage(msg.chat.id, "📎 Fayl yuboring (rasm, video, hujjat va h.k.)");
       }
@@ -190,24 +193,6 @@ export async function sendUploadRequestNotification(opts: {
     );
   } catch (err: any) {
     console.error("[Telegram] Failed to send notification:", err.message);
-  }
-}
-
-export async function forwardToGroup(filePath: string, originalName: string, mimeType: string) {
-  if (!bot || !botConfig?.groupId) return;
-  try {
-    const stream = fs.createReadStream(filePath);
-    if (mimeType.startsWith("image/")) {
-      await bot.sendPhoto(botConfig.groupId, stream, { caption: originalName });
-    } else if (mimeType.startsWith("video/")) {
-      await bot.sendVideo(botConfig.groupId, stream, { caption: originalName });
-    } else if (mimeType.startsWith("audio/")) {
-      await bot.sendAudio(botConfig.groupId, stream, { caption: originalName });
-    } else {
-      await bot.sendDocument(botConfig.groupId, stream, { caption: originalName });
-    }
-  } catch (err: any) {
-    console.error("[Telegram] Failed to forward to group:", err.message);
   }
 }
 

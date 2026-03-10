@@ -9,7 +9,7 @@ import fs from "fs";
 import bcrypt from "bcryptjs";
 import {
   initBot, stopBot, sendUploadRequestNotification,
-  forwardToGroup, setFileReceivedCallback, isBotRunning
+  setFileReceivedCallback, isBotRunning
 } from "./telegram";
 
 const sseClients = new Set<Response>();
@@ -53,26 +53,64 @@ export async function registerRoutes(
   setupAuth(app);
 
   setFileReceivedCallback(async (opts) => {
-    const request = await storage.createUploadRequest({
-      fileName: opts.fileName,
-      originalName: opts.originalName,
-      mimeType: opts.mimeType,
-      size: opts.size,
-      tempPath: opts.tempPath,
-      targetFolderId: null,
-      requestedBy: `telegram:${opts.fromUserId}:${opts.fromName}`,
-    });
-    broadcastUpdate("requests");
-    return { id: request.id, originalName: request.originalName };
+    const adminTelegramId = await storage.getSetting("telegram_admin_user_id");
+
+    if (opts.fromUserId === adminTelegramId) {
+      // Admin yubordi — to'g'ridan-to'g'ri "Telegram" papkasiga saqlash
+      const allFolders = await storage.getFolders(null, true);
+      let telegramFolder = allFolders.find(f => f.name === "Telegram");
+
+      if (!telegramFolder) {
+        const adminUser = await storage.getAdminUser();
+        const adminId = adminUser?.id || "system";
+        telegramFolder = await storage.createFolder({
+          name: "Telegram",
+          parentId: null,
+          isPrivate: false,
+          createdBy: adminId,
+        });
+      }
+
+      const newPath = path.join(UPLOAD_DIR, opts.fileName);
+      if (fs.existsSync(opts.tempPath)) {
+        fs.renameSync(opts.tempPath, newPath);
+      }
+
+      const savedFile = await storage.createFile({
+        name: opts.originalName,
+        originalName: opts.originalName,
+        mimeType: opts.mimeType,
+        size: opts.size,
+        path: newPath,
+        folderId: telegramFolder.id,
+        uploadedBy: telegramFolder.createdBy,
+        isPrivate: false,
+      });
+
+      broadcastUpdate("files");
+      return { id: savedFile.id, originalName: savedFile.originalName };
+    } else {
+      // Boshqa user — upload request sifatida qo'shish
+      const request = await storage.createUploadRequest({
+        fileName: opts.fileName,
+        originalName: opts.originalName,
+        mimeType: opts.mimeType,
+        size: opts.size,
+        tempPath: opts.tempPath,
+        targetFolderId: null,
+        requestedBy: `telegram:${opts.fromUserId}:${opts.fromName}`,
+      });
+      broadcastUpdate("requests");
+      return { id: request.id, originalName: request.originalName };
+    }
   });
 
   (async () => {
     try {
       const token = await storage.getSetting("telegram_bot_token");
       const adminUserId = await storage.getSetting("telegram_admin_user_id");
-      const groupId = await storage.getSetting("telegram_group_id") || "";
       if (token && adminUserId) {
-        await initBot(token, adminUserId, groupId);
+        await initBot(token, adminUserId);
       }
     } catch (e) {
       console.log("[Telegram] No settings found, bot not started");
@@ -532,8 +570,7 @@ export async function registerRoutes(
     try {
       const token = await storage.getSetting("telegram_bot_token") || "";
       const adminUserId = await storage.getSetting("telegram_admin_user_id") || "";
-      const groupId = await storage.getSetting("telegram_group_id") || "";
-      res.json({ token: token ? "***" : "", adminUserId, groupId, isRunning: isBotRunning() });
+      res.json({ token: token ? "***" : "", adminUserId, isRunning: isBotRunning() });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -541,14 +578,13 @@ export async function registerRoutes(
 
   app.put("/api/settings/telegram", requireAdmin, async (req, res) => {
     try {
-      const { token, adminUserId, groupId } = req.body;
+      const { token, adminUserId } = req.body;
       if (token && token !== "***") await storage.setSetting("telegram_bot_token", token);
       await storage.setSetting("telegram_admin_user_id", adminUserId || "");
-      await storage.setSetting("telegram_group_id", groupId || "");
 
       const finalToken = token && token !== "***" ? token : (await storage.getSetting("telegram_bot_token") || "");
       if (finalToken && adminUserId) {
-        await initBot(finalToken, adminUserId, groupId || "");
+        await initBot(finalToken, adminUserId);
         res.json({ message: "Telegram bot started", isRunning: true });
       } else {
         await stopBot();
@@ -564,7 +600,6 @@ export async function registerRoutes(
       await stopBot();
       await storage.setSetting("telegram_bot_token", "");
       await storage.setSetting("telegram_admin_user_id", "");
-      await storage.setSetting("telegram_group_id", "");
       res.json({ message: "Telegram bot disconnected" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
