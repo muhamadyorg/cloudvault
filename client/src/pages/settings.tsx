@@ -8,16 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatFileSize } from "@/lib/utils";
-import { HardDrive, Shield, Cloud, Pencil, Check, X } from "lucide-react";
+import { HardDrive, Shield, Cloud, Pencil, Check, X, Send, Trash2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { SiTelegram } from "react-icons/si";
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [editingLimit, setEditingLimit] = useState(false);
   const [limitInput, setLimitInput] = useState("");
+  const [tgToken, setTgToken] = useState("");
+  const [tgAdminId, setTgAdminId] = useState("");
+  const [tgGroupId, setTgGroupId] = useState("");
 
   const usageQuery = useQuery<{ used: number }>({
     queryKey: ["/api/storage/usage"],
@@ -46,6 +50,42 @@ export default function SettingsPage() {
     },
   });
 
+  const tgQuery = useQuery<{ token: string; adminUserId: string; groupId: string; isRunning: boolean }>({
+    queryKey: ["/api/settings/telegram"],
+    enabled: user?.role === "admin",
+  });
+
+  useEffect(() => {
+    if (tgQuery.data) {
+      setTgToken(tgQuery.data.token || "");
+      setTgAdminId(tgQuery.data.adminUserId || "");
+      setTgGroupId(tgQuery.data.groupId || "");
+    }
+  }, [tgQuery.data]);
+
+  const tgSaveMutation = useMutation({
+    mutationFn: () => apiRequest("PUT", "/api/settings/telegram", { token: tgToken, adminUserId: tgAdminId, groupId: tgGroupId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/telegram"] });
+      toast({ title: "Telegram sozlamalari saqlandi" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Xato", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const tgDisconnectMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", "/api/settings/telegram"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/telegram"] });
+      setTgToken(""); setTgAdminId(""); setTgGroupId("");
+      toast({ title: "Telegram bot o'chirildi" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Xato", description: err.message, variant: "destructive" });
+    },
+  });
+
   const limitGb = limitQuery.data?.limitGb ?? 50;
   const totalSpace = limitGb * 1024 * 1024 * 1024;
   const used = usageQuery.data?.used || 0;
@@ -62,6 +102,7 @@ export default function SettingsPage() {
   }
 
   return (
+    <div className="h-full overflow-y-auto">
     <div className="max-w-2xl mx-auto p-4 space-y-6">
       <div className="space-y-1">
         <h1 className="text-2xl font-bold" data-testid="text-settings-title">Settings</h1>
@@ -185,6 +226,86 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <SiTelegram className="w-5 h-5 text-[#2AABEE]" />
+              Telegram Bot
+              {tgQuery.data?.isRunning && (
+                <Badge variant="secondary" className="ml-auto text-green-600 bg-green-100 dark:bg-green-900/30">
+                  Ishlayapti
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Bot orqali fayllarni qabul qiling. Har qanday user bot ga fayl yuborsa, upload request sifatida keladi. Tasdiqlansa Telegram guruhiga ham yuboriladi.
+            </p>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="tg-token">Bot Token</Label>
+                <Input
+                  id="tg-token"
+                  type="password"
+                  placeholder="1234567890:AAF..."
+                  value={tgToken}
+                  onChange={(e) => setTgToken(e.target.value)}
+                  data-testid="input-tg-token"
+                />
+                <p className="text-xs text-muted-foreground">@BotFather dan olingan token</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="tg-admin-id">Sizning Telegram User ID</Label>
+                <Input
+                  id="tg-admin-id"
+                  placeholder="123456789"
+                  value={tgAdminId}
+                  onChange={(e) => setTgAdminId(e.target.value)}
+                  data-testid="input-tg-admin-id"
+                />
+                <p className="text-xs text-muted-foreground">@userinfobot dan bilib olishingiz mumkin</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="tg-group-id">Telegram Guruh ID (ixtiyoriy)</Label>
+                <Input
+                  id="tg-group-id"
+                  placeholder="-100123456789"
+                  value={tgGroupId}
+                  onChange={(e) => setTgGroupId(e.target.value)}
+                  data-testid="input-tg-group-id"
+                />
+                <p className="text-xs text-muted-foreground">Tasdiqlangan fayllar shu guruhga yuboriladi</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                onClick={() => tgSaveMutation.mutate()}
+                disabled={tgSaveMutation.isPending}
+                data-testid="button-save-telegram"
+                className="flex items-center gap-2"
+              >
+                <Send className="w-4 h-4" />
+                {tgSaveMutation.isPending ? "Saqlanmoqda..." : "Saqlash va ishga tushirish"}
+              </Button>
+              {tgQuery.data?.isRunning && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => tgDisconnectMutation.mutate()}
+                  disabled={tgDisconnectMutation.isPending}
+                  data-testid="button-disconnect-telegram"
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  O'chirish
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -207,6 +328,7 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+    </div>
     </div>
   );
 }

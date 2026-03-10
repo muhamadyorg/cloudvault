@@ -7,6 +7,10 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import bcrypt from "bcryptjs";
+import {
+  initBot, stopBot, sendUploadRequestNotification,
+  forwardToGroup, setFileReceivedCallback, isBotRunning
+} from "./telegram";
 
 const sseClients = new Set<Response>();
 
@@ -47,6 +51,33 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+
+  setFileReceivedCallback(async (opts) => {
+    const request = await storage.createUploadRequest({
+      fileName: opts.fileName,
+      originalName: opts.originalName,
+      mimeType: opts.mimeType,
+      size: opts.size,
+      tempPath: opts.tempPath,
+      targetFolderId: null,
+      requestedBy: `telegram:${opts.fromUserId}:${opts.fromName}`,
+    });
+    broadcastUpdate("requests");
+    return { id: request.id, originalName: request.originalName };
+  });
+
+  (async () => {
+    try {
+      const token = await storage.getSetting("telegram_bot_token");
+      const adminUserId = await storage.getSetting("telegram_admin_user_id");
+      const groupId = await storage.getSetting("telegram_group_id") || "";
+      if (token && adminUserId) {
+        await initBot(token, adminUserId, groupId);
+      }
+    } catch (e) {
+      console.log("[Telegram] No settings found, bot not started");
+    }
+  })();
 
   app.get("/api/events", requireAuth, (req, res) => {
     res.setHeader("Content-Type", "text/event-stream");
@@ -271,6 +302,12 @@ export async function registerRoutes(
           requestedBy: req.user!.id,
         });
         results.push(request);
+        sendUploadRequestNotification({
+          originalName: f.originalname,
+          size: f.size,
+          mimeType: f.mimetype,
+          requestedByUsername: (req.user as any)?.username || "User",
+        }).catch(() => {});
       }
       res.json(results);
     } catch (err: any) {
@@ -314,6 +351,9 @@ export async function registerRoutes(
       await storage.updateUploadRequestStatus(req.params.id, "approved");
       broadcastUpdate("files");
       broadcastUpdate("requests");
+
+      forwardToGroup(newPath, request.originalName, request.mimeType).catch(() => {});
+
       res.json({ message: "Approved" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -483,6 +523,49 @@ export async function registerRoutes(
       }
       await storage.setSetting("storage_limit_gb", String(parsed));
       res.json({ limitGb: parsed });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/settings/telegram", requireAdmin, async (req, res) => {
+    try {
+      const token = await storage.getSetting("telegram_bot_token") || "";
+      const adminUserId = await storage.getSetting("telegram_admin_user_id") || "";
+      const groupId = await storage.getSetting("telegram_group_id") || "";
+      res.json({ token: token ? "***" : "", adminUserId, groupId, isRunning: isBotRunning() });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/settings/telegram", requireAdmin, async (req, res) => {
+    try {
+      const { token, adminUserId, groupId } = req.body;
+      if (token && token !== "***") await storage.setSetting("telegram_bot_token", token);
+      await storage.setSetting("telegram_admin_user_id", adminUserId || "");
+      await storage.setSetting("telegram_group_id", groupId || "");
+
+      const finalToken = token && token !== "***" ? token : (await storage.getSetting("telegram_bot_token") || "");
+      if (finalToken && adminUserId) {
+        await initBot(finalToken, adminUserId, groupId || "");
+        res.json({ message: "Telegram bot started", isRunning: true });
+      } else {
+        await stopBot();
+        res.json({ message: "Telegram bot stopped", isRunning: false });
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/settings/telegram", requireAdmin, async (req, res) => {
+    try {
+      await stopBot();
+      await storage.setSetting("telegram_bot_token", "");
+      await storage.setSetting("telegram_admin_user_id", "");
+      await storage.setSetting("telegram_group_id", "");
+      res.json({ message: "Telegram bot disconnected" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
