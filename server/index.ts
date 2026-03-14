@@ -60,6 +60,8 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  app.get("/health", (_req, res) => res.status(200).json({ status: "ok" }));
+
   const { seedDatabase } = await import("./seed");
   await registerRoutes(httpServer, app);
   await seedDatabase();
